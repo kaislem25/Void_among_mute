@@ -22,57 +22,57 @@ class MuteControlView(discord.ui.View):
 
     @discord.ui.button(label="Mute All (كتم الجميع)", style=discord.ButtonStyle.danger, custom_id="mute_all_btn")
     async def mute_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 1. التحقق من وجود المستخدم في غرفة صوتية
         if not interaction.user.voice:
             await interaction.response.send_message("❌ يجب أن تكون في غرفة صوتية لتنفيذ هذا الأمر.", ephemeral=True)
             return
-        if not interaction.user.guild_permissions.mute_members:
-            await interaction.response.send_message("❌ ليس لديك صلاحية كتم الأعضاء.", ephemeral=True)
+        
+        # 2. التحقق من أن المستخدم يمتلك رول المدير
+        target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        if not target_role or target_role not in interaction.user.roles:
+            await interaction.response.send_message(f"❌ يجب أن تمتلك رول '{MUTE_ROLE_NAME}' لاستخدام هذا الزر.", ephemeral=True)
             return
 
         channel = interaction.user.voice.channel
-        target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
-        
-        if not target_role:
-            await interaction.response.send_message(f"❌ لم يتم العثور على الرول '{MUTE_ROLE_NAME}' في السيرفر.", ephemeral=True)
-            return
-
         muted_count = 0
+
+        # 3. كتم جميع الأعضاء في الغرفة (ما عدا من ضغط الزر)
         for member in channel.members:
-            if not member.bot and target_role in member.roles and not member.voice.mute:
+            if not member.bot and member != interaction.user and not member.voice.mute:
                 try:
                     await member.edit(mute=True)
                     muted_count += 1
                 except discord.Forbidden:
                     pass
 
-        await interaction.response.send_message(f"✅ تم كتم **{muted_count}** عضو من رول {MUTE_ROLE_NAME} في الغرفة.", ephemeral=True)
+        await interaction.response.send_message(f"✅ تم كتم **{muted_count}** عضو في الغرفة (باستثناء أنت).", ephemeral=True)
 
     @discord.ui.button(label="Unmute All (إلغاء الكتم)", style=discord.ButtonStyle.success, custom_id="unmute_all_btn")
     async def unmute_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 1. التحقق من وجود المستخدم في غرفة صوتية
         if not interaction.user.voice:
             await interaction.response.send_message("❌ يجب أن تكون في غرفة صوتية لتنفيذ هذا الأمر.", ephemeral=True)
             return
-        if not interaction.user.guild_permissions.mute_members:
-            await interaction.response.send_message("❌ ليس لديك صلاحية كتم الأعضاء.", ephemeral=True)
+        
+        # 2. التحقق من أن المستخدم يمتلك رول المدير
+        target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        if not target_role or target_role not in interaction.user.roles:
+            await interaction.response.send_message(f"❌ يجب أن تمتلك رول '{MUTE_ROLE_NAME}' لاستخدام هذا الزر.", ephemeral=True)
             return
 
         channel = interaction.user.voice.channel
-        target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
-        
-        if not target_role:
-            await interaction.response.send_message(f"❌ لم يتم العثور على الرول '{MUTE_ROLE_NAME}' في السيرفر.", ephemeral=True)
-            return
-
         unmuted_count = 0
+
+        # 3. إلغاء كتم جميع الأعضاء في الغرفة
         for member in channel.members:
-            if not member.bot and target_role in member.roles and member.voice.mute:
+            if not member.bot and member.voice.mute:
                 try:
                     await member.edit(mute=False)
                     unmuted_count += 1
                 except discord.Forbidden:
                     pass
 
-        await interaction.response.send_message(f"✅ تم إلغاء كتم **{unmuted_count}** عضو من رول {MUTE_ROLE_NAME}.", ephemeral=True)
+        await interaction.response.send_message(f"✅ تم إلغاء كتم **{unmuted_count}** عضو في الغرفة.", ephemeral=True)
 
 # --- عند تشغيل البوت ---
 @bot.event
@@ -86,7 +86,7 @@ async def on_ready():
 async def setup_mute(ctx):
     embed = discord.Embed(
         title="🎮 لوحة تحكم أمونق ميوت",
-        description=f"اضغط على الأزرار بالأسفل للتحكم في كتم اللاعبين الذين يمتلكون رول **{MUTE_ROLE_NAME}** فقط.",
+        description=f"فقط من يمتلك رول **{MUTE_ROLE_NAME}** يمكنه استخدام هذه الأزرار. عند الضغط على Mute All، سيتم كتم جميع من في غرفتك (ما عداك).",
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, view=MuteControlView())
