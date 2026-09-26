@@ -5,9 +5,9 @@ import os
 from aiohttp import web
 
 # --- الإعدادات ---
-# سيتم قراءة التوكن من إعدادات Render لحمايته
 TOKEN = os.getenv('DISCORD_TOKEN')
-MUTE_ROLE_NAME = "Among Manger"
+# ⚠️ تم تعديل الاسم ليطابق الصورة تماماً
+MUTE_ROLE_NAME = "AMONG US MANAGER" 
 
 intents = discord.Intents.default()
 intents.members = True
@@ -31,20 +31,25 @@ class MuteControlView(discord.ui.View):
             return
 
         channel = interaction.user.voice.channel
-        mute_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        
+        # جلب الرول المطلوب
+        target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        if not target_role:
+            await interaction.response.send_message(f"❌ لم يتم العثور على الرول '{MUTE_ROLE_NAME}' في السيرفر.", ephemeral=True)
+            return
+
         muted_count = 0
 
+        # كتم الأعضاء الذين يمتلكون الرول فقط
         for member in channel.members:
-            if not member.bot and not member.voice.mute:
+            if not member.bot and target_role in member.roles and not member.voice.mute:
                 try:
                     await member.edit(mute=True)
-                    if mute_role:
-                        await member.add_roles(mute_role)
                     muted_count += 1
                 except discord.Forbidden:
                     pass
 
-        await interaction.response.send_message(f"✅ تم كتم **{muted_count}** عضو في نفس الغرفة.", ephemeral=True)
+        await interaction.response.send_message(f"✅ تم كتم **{muted_count}** عضو من رول {MUTE_ROLE_NAME} في نفس الغرفة.", ephemeral=True)
 
     @discord.ui.button(label="Unmute All (إلغاء الكتم)", style=discord.ButtonStyle.success, custom_id="unmute_all_btn")
     async def unmute_all(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -56,20 +61,25 @@ class MuteControlView(discord.ui.View):
             return
 
         channel = interaction.user.voice.channel
-        mute_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        
+        # جلب الرول المطلوب
+        target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        if not target_role:
+            await interaction.response.send_message(f"❌ لم يتم العثور على الرول '{MUTE_ROLE_NAME}' في السيرفر.", ephemeral=True)
+            return
+
         unmuted_count = 0
 
+        # إلغاء كتم الأعضاء الذين يمتلكون الرول فقط
         for member in channel.members:
-            if not member.bot and member.voice.mute:
+            if not member.bot and target_role in member.roles and member.voice.mute:
                 try:
                     await member.edit(mute=False)
-                    if mute_role and mute_role in member.roles:
-                        await member.remove_roles(mute_role)
                     unmuted_count += 1
                 except discord.Forbidden:
                     pass
 
-        await interaction.response.send_message(f"✅ تم إلغاء كتم **{unmuted_count}** عضو.", ephemeral=True)
+        await interaction.response.send_message(f"✅ تم إلغاء كتم **{unmuted_count}** عضو من رول {MUTE_ROLE_NAME}.", ephemeral=True)
 
 @bot.event
 async def on_ready():
@@ -81,7 +91,7 @@ async def on_ready():
 async def setup_mute(ctx):
     embed = discord.Embed(
         title="🎮 لوحة تحكم أمونق ميوت",
-        description="اضغط على الأزرار بالأسفل للتحكم في كتم اللاعبين في الغرفة الصوتية الحالية.",
+        description=f"اضغط على الأزرار بالأسفل للتحكم في كتم اللاعبين الذين يمتلكون رول **{MUTE_ROLE_NAME}** فقط.",
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, view=MuteControlView())
@@ -95,7 +105,6 @@ async def start_web_server():
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    # Render سيعطينا منفذ (Port) تلقائياً
     port = int(os.getenv('PORT', 8080))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
