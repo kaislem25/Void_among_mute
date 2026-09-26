@@ -5,9 +5,10 @@ import os
 from aiohttp import web
 
 # --- الإعدادات ---
+# قراءة التوكن من إعدادات Render لحمايته
 TOKEN = os.getenv('DISCORD_TOKEN')
-# ⚠️ تم تعديل الاسم ليطابق الصورة تماماً
-MUTE_ROLE_NAME = "AMONG US MANAGER" 
+# اسم الرول المطلوب (تأكد من مطابقته تماماً لما في السيرفر)
+MUTE_ROLE_NAME = "AMONG US MANAGER"
 
 intents = discord.Intents.default()
 intents.members = True
@@ -16,16 +17,19 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- واجهة الأزرار ---
+# --- واجهة الأزرار (Buttons) ---
 class MuteControlView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None) # لجعل الأزرار تعمل دائماً حتى بعد إعادة التشغيل
 
     @discord.ui.button(label="Mute All (كتم الجميع)", style=discord.ButtonStyle.danger, custom_id="mute_all_btn")
     async def mute_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # التحقق من وجود المستخدم في غرفة صوتية
         if not interaction.user.voice:
             await interaction.response.send_message("❌ يجب أن تكون في غرفة صوتية لتنفيذ هذا الأمر.", ephemeral=True)
             return
+        
+        # التحقق من صلاحيات المستخدم
         if not interaction.user.guild_permissions.mute_members:
             await interaction.response.send_message("❌ ليس لديك صلاحية كتم الأعضاء.", ephemeral=True)
             return
@@ -40,7 +44,7 @@ class MuteControlView(discord.ui.View):
 
         muted_count = 0
 
-        # كتم الأعضاء الذين يمتلكون الرول فقط
+        # كتم الأعضاء الذين يمتلكون الرول فقط في نفس الغرفة
         for member in channel.members:
             if not member.bot and target_role in member.roles and not member.voice.mute:
                 try:
@@ -49,13 +53,16 @@ class MuteControlView(discord.ui.View):
                 except discord.Forbidden:
                     pass
 
-        await interaction.response.send_message(f"✅ تم كتم **{muted_count}** عضو من رول {MUTE_ROLE_NAME} في نفس الغرفة.", ephemeral=True)
+        await interaction.response.send_message(f"✅ تم كتم **{muted_count}** عضو من رول {MUTE_ROLE_NAME} في الغرفة.", ephemeral=True)
 
     @discord.ui.button(label="Unmute All (إلغاء الكتم)", style=discord.ButtonStyle.success, custom_id="unmute_all_btn")
     async def unmute_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # التحقق من وجود المستخدم في غرفة صوتية
         if not interaction.user.voice:
             await interaction.response.send_message("❌ يجب أن تكون في غرفة صوتية لتنفيذ هذا الأمر.", ephemeral=True)
             return
+        
+        # التحقق من صلاحيات المستخدم
         if not interaction.user.guild_permissions.mute_members:
             await interaction.response.send_message("❌ ليس لديك صلاحية كتم الأعضاء.", ephemeral=True)
             return
@@ -81,14 +88,18 @@ class MuteControlView(discord.ui.View):
 
         await interaction.response.send_message(f"✅ تم إلغاء كتم **{unmuted_count}** عضو من رول {MUTE_ROLE_NAME}.", ephemeral=True)
 
+# --- عند تشغيل البوت ---
 @bot.event
 async def on_ready():
+    # تسجيل الأزرار لتعمل حتى بعد إعادة تشغيل البوت
     bot.add_view(MuteControlView())
-    print(f'تم تسجيل الدخول باسم {bot.user}')
+    print(f'✅ تم تسجيل الدخول بنجاح باسم {bot.user}')
 
+# --- أمر إرسال لوحة التحكم ---
 @bot.command(name='setup_mute')
 @commands.has_permissions(administrator=True)
 async def setup_mute(ctx):
+    """يرسل لوحة التحكم بالأزرار (للمشرفين فقط)"""
     embed = discord.Embed(
         title="🎮 لوحة تحكم أمونق ميوت",
         description=f"اضغط على الأزرار بالأسفل للتحكم في كتم اللاعبين الذين يمتلكون رول **{MUTE_ROLE_NAME}** فقط.",
@@ -96,7 +107,7 @@ async def setup_mute(ctx):
     )
     await ctx.send(embed=embed, view=MuteControlView())
 
-# --- سيرفر ويب وهمي لإبقاء Render سعيداً ---
+# --- سيرفر ويب وهمي لإبقاء Render مستيقظاً ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -105,14 +116,33 @@ async def start_web_server():
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
+    # Render سيعطينا منفذ (Port) تلقائياً
     port = int(os.getenv('PORT', 8080))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
+    print(f"🌐 Web server started on port {port}")
 
-# --- تشغيل البوت والسيرفر معاً ---
+# --- تشغيل البوت والسيرفر معاً (مع معالجة الأخطاء) ---
 async def main():
+    # 1. تشغيل سيرفر الويب أولاً
     await start_web_server()
-    await bot.start(TOKEN)
+    
+    # 2. حلقة لا نهائية لتشغيل البوت وإعادة المحاولة عند حدوث خطأ
+    while True:
+        try:
+            print("⏳ جاري محاولة الاتصال بديسكورد...")
+            await bot.start(TOKEN)
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                print("⚠️ تحذير: تم حظر الـ IP مؤقتاً من قبل ديسكورد (خطأ 429).")
+                print("⏳ سننتظر 10 دقائق قبل محاولة الاتصال مرة أخرى...")
+                await asyncio.sleep(600) # الانتظار 10 دقائق (600 ثانية)
+            else:
+                print(f"❌ خطأ HTTP غير متوقع: {e}")
+                await asyncio.sleep(60) # الانتظار دقيقة واحدة
+        except Exception as e:
+            print(f"❌ خطأ غير متوقع: {e}")
+            await asyncio.sleep(60) # الانتظار دقيقة واحدة
 
 if __name__ == '__main__':
     asyncio.run(main())
