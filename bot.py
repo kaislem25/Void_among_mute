@@ -5,9 +5,7 @@ import os
 from aiohttp import web
 
 # --- الإعدادات ---
-# قراءة التوكن من إعدادات Render لحمايته
 TOKEN = os.getenv('DISCORD_TOKEN')
-# اسم الرول المطلوب (تأكد من مطابقته تماماً لما في السيرفر)
 MUTE_ROLE_NAME = "AMONG US MANAGER"
 
 intents = discord.Intents.default()
@@ -20,31 +18,25 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # --- واجهة الأزرار (Buttons) ---
 class MuteControlView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None) # لجعل الأزرار تعمل دائماً حتى بعد إعادة التشغيل
+        super().__init__(timeout=None)
 
     @discord.ui.button(label="Mute All (كتم الجميع)", style=discord.ButtonStyle.danger, custom_id="mute_all_btn")
     async def mute_all(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # التحقق من وجود المستخدم في غرفة صوتية
         if not interaction.user.voice:
             await interaction.response.send_message("❌ يجب أن تكون في غرفة صوتية لتنفيذ هذا الأمر.", ephemeral=True)
             return
-        
-        # التحقق من صلاحيات المستخدم
         if not interaction.user.guild_permissions.mute_members:
             await interaction.response.send_message("❌ ليس لديك صلاحية كتم الأعضاء.", ephemeral=True)
             return
 
         channel = interaction.user.voice.channel
-        
-        # جلب الرول المطلوب
         target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        
         if not target_role:
             await interaction.response.send_message(f"❌ لم يتم العثور على الرول '{MUTE_ROLE_NAME}' في السيرفر.", ephemeral=True)
             return
 
         muted_count = 0
-
-        # كتم الأعضاء الذين يمتلكون الرول فقط في نفس الغرفة
         for member in channel.members:
             if not member.bot and target_role in member.roles and not member.voice.mute:
                 try:
@@ -57,27 +49,21 @@ class MuteControlView(discord.ui.View):
 
     @discord.ui.button(label="Unmute All (إلغاء الكتم)", style=discord.ButtonStyle.success, custom_id="unmute_all_btn")
     async def unmute_all(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # التحقق من وجود المستخدم في غرفة صوتية
         if not interaction.user.voice:
             await interaction.response.send_message("❌ يجب أن تكون في غرفة صوتية لتنفيذ هذا الأمر.", ephemeral=True)
             return
-        
-        # التحقق من صلاحيات المستخدم
         if not interaction.user.guild_permissions.mute_members:
             await interaction.response.send_message("❌ ليس لديك صلاحية كتم الأعضاء.", ephemeral=True)
             return
 
         channel = interaction.user.voice.channel
-        
-        # جلب الرول المطلوب
         target_role = discord.utils.get(interaction.guild.roles, name=MUTE_ROLE_NAME)
+        
         if not target_role:
             await interaction.response.send_message(f"❌ لم يتم العثور على الرول '{MUTE_ROLE_NAME}' في السيرفر.", ephemeral=True)
             return
 
         unmuted_count = 0
-
-        # إلغاء كتم الأعضاء الذين يمتلكون الرول فقط
         for member in channel.members:
             if not member.bot and target_role in member.roles and member.voice.mute:
                 try:
@@ -91,7 +77,6 @@ class MuteControlView(discord.ui.View):
 # --- عند تشغيل البوت ---
 @bot.event
 async def on_ready():
-    # تسجيل الأزرار لتعمل حتى بعد إعادة تشغيل البوت
     bot.add_view(MuteControlView())
     print(f'✅ تم تسجيل الدخول بنجاح باسم {bot.user}')
 
@@ -99,7 +84,6 @@ async def on_ready():
 @bot.command(name='setup_mute')
 @commands.has_permissions(administrator=True)
 async def setup_mute(ctx):
-    """يرسل لوحة التحكم بالأزرار (للمشرفين فقط)"""
     embed = discord.Embed(
         title="🎮 لوحة تحكم أمونق ميوت",
         description=f"اضغط على الأزرار بالأسفل للتحكم في كتم اللاعبين الذين يمتلكون رول **{MUTE_ROLE_NAME}** فقط.",
@@ -116,18 +100,15 @@ async def start_web_server():
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    # Render سيعطينا منفذ (Port) تلقائياً
     port = int(os.getenv('PORT', 8080))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"🌐 Web server started on port {port}")
 
-# --- تشغيل البوت والسيرفر معاً (مع معالجة الأخطاء) ---
+# --- تشغيل البوت والسيرفر معاً ---
 async def main():
-    # 1. تشغيل سيرفر الويب أولاً
     await start_web_server()
     
-    # 2. حلقة لا نهائية لتشغيل البوت وإعادة المحاولة عند حدوث خطأ
     while True:
         try:
             print("⏳ جاري محاولة الاتصال بديسكورد...")
@@ -136,13 +117,13 @@ async def main():
             if e.status == 429:
                 print("⚠️ تحذير: تم حظر الـ IP مؤقتاً من قبل ديسكورد (خطأ 429).")
                 print("⏳ سننتظر 10 دقائق قبل محاولة الاتصال مرة أخرى...")
-                await asyncio.sleep(600) # الانتظار 10 دقائق (600 ثانية)
+                await asyncio.sleep(600)
             else:
                 print(f"❌ خطأ HTTP غير متوقع: {e}")
-                await asyncio.sleep(60) # الانتظار دقيقة واحدة
+                await asyncio.sleep(60)
         except Exception as e:
             print(f"❌ خطأ غير متوقع: {e}")
-            await asyncio.sleep(60) # الانتظار دقيقة واحدة
+            await asyncio.sleep(60)
 
 if __name__ == '__main__':
     asyncio.run(main())
